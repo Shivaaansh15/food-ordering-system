@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forkful — Cart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+    <a class="brand" href="restaurants.html">Fork<span>ful</span></a>
+    <nav>
+        <a href="restaurants.html">Browse</a>
+        <a href="orders.html">My orders</a>
+        <a href="cart.html">Cart<span class="cart-badge" id="cart-badge">0</span></a>
+        <a href="#" onclick="Session.clear(); window.location='index.html';">Log out</a>
+    </nav>
+</div>
+
+<div class="container">
+    <h1>Your cart</h1>
+    <div id="error-banner" class="error-banner"></div>
+    <div id="cart-body"></div>
+
+    <div class="card" id="checkout-card" style="display:none;">
+        <h3>Delivery address</h3>
+        <div class="form-row">
+            <input id="delivery-address" type="text" placeholder="Where should this be delivered?">
+        </div>
+        <button style="width:100%" onclick="placeOrder()">Place order</button>
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+Session.requireLogin();
+
+let cachedItems = [];
+
+async function loadCart() {
+    try {
+        cachedItems = await apiCall("/cart");
+        render();
+        refreshCartBadge();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function render() {
+    const body = document.getElementById("cart-body");
+    const checkoutCard = document.getElementById("checkout-card");
+
+    if (cachedItems.length === 0) {
+        body.innerHTML = '<div class="empty-state">Your cart is empty. <a href="restaurants.html">Browse restaurants</a> to get started.</div>';
+        checkoutCard.style.display = "none";
+        return;
+    }
+
+    let total = 0;
+    const rows = cachedItems.map(ci => {
+        const lineTotal = ci.menuItem.price * ci.quantity;
+        total += lineTotal;
+        return `
+            <tr>
+                <td>${escapeHtml(ci.menuItem.name)}</td>
+                <td>${money(ci.menuItem.price)}</td>
+                <td>
+                    <div class="qty-control">
+                        <button class="secondary" onclick="updateQty(${ci.id}, ${ci.menuItem.id}, ${ci.quantity - 1})">−</button>
+                        <span>${ci.quantity}</span>
+                        <button class="secondary" onclick="updateQty(${ci.id}, ${ci.menuItem.id}, ${ci.quantity + 1})">+</button>
+                    </div>
+                </td>
+                <td>${money(lineTotal)}</td>
+                <td><button class="secondary" onclick="removeItem(${ci.id})">Remove</button></td>
+            </tr>
+        `;
+    }).join("");
+
+    body.innerHTML = `
+        <table class="card">
+            <thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <h3 style="text-align:right;">Total: ${money(total)}</h3>
+    `;
+    checkoutCard.style.display = "block";
+}
+
+/** AJAX: quantity +/- updates the cart on the server immediately. */
+async function updateQty(cartItemId, menuItemId, newQty) {
+    try {
+        if (newQty <= 0) {
+            await apiCall(`/cart/items/${cartItemId}`, { method: "DELETE" });
+        } else {
+            await apiCall("/cart/items", { method: "POST", body: { menuItemId, quantity: newQty } });
+        }
+        await loadCart();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+async function removeItem(cartItemId) {
+    try {
+        await apiCall(`/cart/items/${cartItemId}`, { method: "DELETE" });
+        await loadCart();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+async function placeOrder() {
+    const address = document.getElementById("delivery-address").value.trim();
+    if (!address) { showError("Please enter a delivery address."); return; }
+    if (cachedItems.length === 0) { showError("Your cart is empty."); return; }
+
+    const restaurantId = cachedItems[0].menuItem.restaurant?.id || cachedItems[0].menuItem.restaurantId;
+    try {
+        const order = await apiCall("/orders", {
+            method: "POST",
+            body: { restaurantId, deliveryAddress: address }
+        });
+        window.location.href = `orders.html?track=${order.id}`;
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+async function refreshCartBadge() {
+    const count = cachedItems.reduce((sum, i) => sum + i.quantity, 0);
+    document.getElementById("cart-badge").textContent = count;
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+loadCart();
+</script>
+</body>
+</html>

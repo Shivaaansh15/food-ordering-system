@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forkful — Menu</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+    <a class="brand" href="restaurants.html">Fork<span>ful</span></a>
+    <nav>
+        <a href="restaurants.html">Browse</a>
+        <a href="orders.html">My orders</a>
+        <a href="cart.html">Cart<span class="cart-badge" id="cart-badge">0</span></a>
+        <a href="#" onclick="Session.clear(); window.location='index.html';">Log out</a>
+    </nav>
+</div>
+
+<div class="container">
+    <h1 id="restaurant-name">Menu</h1>
+    <p class="subtitle" id="restaurant-desc"></p>
+    <div id="error-banner" class="error-banner"></div>
+    <div id="menu-list" class="grid"></div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+Session.requireLogin();
+
+const params = new URLSearchParams(window.location.search);
+const restaurantId = params.get("restaurantId");
+
+async function loadMenu() {
+    try {
+        const restaurant = await apiCall(`/restaurants/${restaurantId}`);
+        document.getElementById("restaurant-name").textContent = restaurant.name;
+        document.getElementById("restaurant-desc").textContent = restaurant.description || "";
+
+        const items = await apiCall(`/restaurants/${restaurantId}/menu`);
+        const list = document.getElementById("menu-list");
+        if (items.length === 0) {
+            list.innerHTML = '<div class="empty-state">This restaurant has no items available right now.</div>';
+            return;
+        }
+        list.innerHTML = items.map(item => `
+            <div class="menu-item-card">
+                <h3>${escapeHtml(item.name)}</h3>
+                <p style="color:var(--muted); font-size:14px; margin:0;">${escapeHtml(item.description || '')}</p>
+                <span class="price">${money(item.price)}</span>
+                <div class="qty-control">
+                    <button class="secondary" onclick="changeQty(${item.id}, -1)">−</button>
+                    <span id="qty-${item.id}">1</span>
+                    <button class="secondary" onclick="changeQty(${item.id}, 1)">+</button>
+                    <button onclick="addToCart(${item.id})">Add to cart</button>
+                </div>
+            </div>
+        `).join("");
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+const quantities = {};
+
+function changeQty(itemId, delta) {
+    const current = quantities[itemId] || 1;
+    quantities[itemId] = Math.max(1, current + delta);
+    document.getElementById(`qty-${itemId}`).textContent = quantities[itemId];
+}
+
+/**
+ * AJAX add-to-cart: posts to the backend and updates the cart badge
+ * immediately, without reloading the page.
+ */
+async function addToCart(menuItemId) {
+    try {
+        await apiCall("/cart/items", {
+            method: "POST",
+            body: { menuItemId, quantity: quantities[menuItemId] || 1 }
+        });
+        await refreshCartBadge();
+        flashBadge();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function flashBadge() {
+    const badge = document.getElementById("cart-badge");
+    badge.style.transform = "scale(1.35)";
+    setTimeout(() => { badge.style.transform = "scale(1)"; }, 180);
+}
+
+async function refreshCartBadge() {
+    try {
+        const items = await apiCall("/cart");
+        const count = items.reduce((sum, i) => sum + i.quantity, 0);
+        document.getElementById("cart-badge").textContent = count;
+    } catch (e) { /* ignore */ }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+loadMenu();
+refreshCartBadge();
+</script>
+</body>
+</html>

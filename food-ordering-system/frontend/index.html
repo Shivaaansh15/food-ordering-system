@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forkful — Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+    <a class="brand" href="index.html">Fork<span>ful</span></a>
+</div>
+
+<div class="container" style="max-width:420px;">
+    <div class="tabs">
+        <button class="tab active" id="tab-login" onclick="switchTab('login')">Log in</button>
+        <button class="tab" id="tab-register" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <div id="error-banner" class="error-banner"></div>
+
+    <!-- LOGIN -->
+    <div id="panel-login" class="card">
+        <h2>Welcome back</h2>
+        <p class="subtitle">Log in to order food or manage your restaurant.</p>
+        <div class="form-row">
+            <label>Email</label>
+            <input id="login-email" type="email" placeholder="you@example.com">
+        </div>
+        <div class="form-row">
+            <label>Password</label>
+            <input id="login-password" type="password" placeholder="••••••••">
+        </div>
+        <button style="width:100%" onclick="doLogin()">Log in</button>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="panel-register" class="card" style="display:none;">
+        <h2>Create an account</h2>
+        <p class="subtitle">Sign up as a customer or as a restaurant admin.</p>
+        <div class="form-row">
+            <label>I am a</label>
+            <select id="reg-role">
+                <option value="CUSTOMER">Customer — I want to order food</option>
+                <option value="RESTAURANT_ADMIN">Restaurant Admin — I manage a restaurant</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label>Full name</label>
+            <input id="reg-name" type="text" placeholder="Jane Doe">
+        </div>
+        <div class="form-row">
+            <label>Email</label>
+            <input id="reg-email" type="email" placeholder="you@example.com">
+        </div>
+        <div class="form-row">
+            <label>Password</label>
+            <input id="reg-password" type="password" placeholder="At least 6 characters">
+        </div>
+        <div class="form-row">
+            <label>Phone</label>
+            <input id="reg-phone" type="text" placeholder="Optional">
+        </div>
+        <div class="form-row">
+            <label>Address</label>
+            <input id="reg-address" type="text" placeholder="Delivery / restaurant address">
+        </div>
+        <button style="width:100%" onclick="doRegister()">Create account</button>
+    </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+function switchTab(tab) {
+    document.getElementById("tab-login").classList.toggle("active", tab === "login");
+    document.getElementById("tab-register").classList.toggle("active", tab === "register");
+    document.getElementById("panel-login").style.display = tab === "login" ? "block" : "none";
+    document.getElementById("panel-register").style.display = tab === "register" ? "block" : "none";
+}
+
+async function doLogin() {
+    try {
+        const auth = await apiCall("/auth/login", {
+            method: "POST",
+            auth: false,
+            body: {
+                email: document.getElementById("login-email").value,
+                password: document.getElementById("login-password").value
+            }
+        });
+        Session.save(auth);
+        redirectByRole(auth.role);
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+async function doRegister() {
+    try {
+        await apiCall("/auth/register", {
+            method: "POST",
+            auth: false,
+            body: {
+                name: document.getElementById("reg-name").value,
+                email: document.getElementById("reg-email").value,
+                password: document.getElementById("reg-password").value,
+                phone: document.getElementById("reg-phone").value,
+                address: document.getElementById("reg-address").value,
+                role: document.getElementById("reg-role").value
+            }
+        });
+        // Auto-login after successful registration
+        const auth = await apiCall("/auth/login", {
+            method: "POST",
+            auth: false,
+            body: {
+                email: document.getElementById("reg-email").value,
+                password: document.getElementById("reg-password").value
+            }
+        });
+        Session.save(auth);
+        redirectByRole(auth.role);
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function redirectByRole(role) {
+    window.location.href = role === "RESTAURANT_ADMIN" ? "admin.html" : "restaurants.html";
+}
+
+if (Session.isLoggedIn()) redirectByRole(Session.role);
+</script>
+</body>
+</html>

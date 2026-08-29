@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forkful — My orders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+    <a class="brand" href="restaurants.html">Fork<span>ful</span></a>
+    <nav>
+        <a href="restaurants.html">Browse</a>
+        <a href="orders.html">My orders</a>
+        <a href="cart.html">Cart<span class="cart-badge" id="cart-badge">0</span></a>
+        <a href="#" onclick="Session.clear(); window.location='index.html';">Log out</a>
+    </nav>
+</div>
+
+<div class="container">
+    <h1>My orders</h1>
+    <p class="subtitle">Track a live order or browse your order history.</p>
+    <div id="error-banner" class="error-banner"></div>
+    <div id="orders-list"></div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+Session.requireLogin();
+
+const STEPS = ["PLACED", "ACCEPTED", "PREPARING", "OUT_FOR_DELIVERY", "DELIVERED"];
+const params = new URLSearchParams(window.location.search);
+const highlightOrderId = params.get("track");
+let pollTimer = null;
+
+async function loadOrders() {
+    try {
+        const orders = await apiCall("/orders/history");
+        const list = document.getElementById("orders-list");
+        if (orders.length === 0) {
+            list.innerHTML = '<div class="empty-state">No orders yet. <a href="restaurants.html">Order something delicious.</a></div>';
+            return;
+        }
+        list.innerHTML = orders.map(o => renderOrderCard(o)).join("");
+        refreshCartBadge();
+
+        if (highlightOrderId) {
+            startPolling(highlightOrderId);
+        }
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+function renderOrderCard(o) {
+    const items = o.items.map(i => `${i.quantity}× ${escapeHtml(i.menuItem.name)}`).join(", ");
+    const stepIndex = STEPS.indexOf(o.status);
+    const isTerminalBad = o.status === "REJECTED" || o.status === "CANCELLED";
+
+    let tracker = "";
+    if (!isTerminalBad) {
+        tracker = `<div class="tracker">${STEPS.map((s, i) => `
+            <div class="step ${i < stepIndex ? 'done' : ''} ${i === stepIndex ? 'current' : ''}">
+                <div class="dot"></div>${s.replace(/_/g, ' ')}
+            </div>
+        `).join("")}</div>`;
+    }
+
+    return `
+        <div class="card" id="order-${o.id}">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>Order #${o.id} — ${escapeHtml(o.restaurant.name)}</h3>
+                <span class="status-pill status-${o.status}">${o.status.replace(/_/g, ' ')}</span>
+            </div>
+            <p style="color:var(--muted); font-size:14px;">${items}</p>
+            <p style="color:var(--muted); font-size:13px;">Delivering to: ${escapeHtml(o.deliveryAddress)}</p>
+            ${tracker}
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong>${money(o.totalAmount)}</strong>
+                ${o.status === "PLACED" ? `<button class="secondary" onclick="cancelOrder(${o.id})">Cancel order</button>` : ""}
+            </div>
+        </div>
+    `;
+}
+
+async function cancelOrder(orderId) {
+    try {
+        await apiCall(`/orders/${orderId}/cancel`, { method: "POST" });
+        await loadOrders();
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+/**
+ * Polls the tracking endpoint every few seconds via AJAX so the status
+ * pill and progress tracker update live as the restaurant accepts /
+ * prepares / ships the order, without the customer refreshing the page.
+ */
+function startPolling(orderId) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+        try {
+            const order = await apiCall(`/orders/${orderId}/track`);
+            const el = document.getElementById(`order-${orderId}`);
+            if (el) el.outerHTML = renderOrderCard(order);
+            if (["DELIVERED", "REJECTED", "CANCELLED"].includes(order.status)) {
+                clearInterval(pollTimer);
+            }
+        } catch (e) { /* silent - keep polling */ }
+    }, 4000);
+}
+
+async function refreshCartBadge() {
+    try {
+        const items = await apiCall("/cart");
+        const count = items.reduce((sum, i) => sum + i.quantity, 0);
+        document.getElementById("cart-badge").textContent = count;
+    } catch (e) { /* ignore */ }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+loadOrders();
+</script>
+</body>
+</html>

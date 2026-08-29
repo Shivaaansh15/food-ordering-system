@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forkful — Restaurants</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="topbar">
+    <a class="brand" href="restaurants.html">Fork<span>ful</span></a>
+    <nav>
+        <a href="restaurants.html">Browse</a>
+        <a href="orders.html">My orders</a>
+        <a href="cart.html">Cart<span class="cart-badge" id="cart-badge">0</span></a>
+        <a href="#" onclick="Session.clear(); window.location='index.html';">Log out</a>
+    </nav>
+</div>
+
+<div class="container">
+    <h1>Restaurants near you</h1>
+    <p class="subtitle">Pick a restaurant to see its menu.</p>
+    <div id="error-banner" class="error-banner"></div>
+    <div id="restaurant-grid" class="grid"></div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+Session.requireLogin();
+
+async function loadRestaurants() {
+    try {
+        const restaurants = await apiCall("/restaurants");
+        const grid = document.getElementById("restaurant-grid");
+        if (restaurants.length === 0) {
+            grid.innerHTML = '<div class="empty-state">No restaurants are open right now. Check back soon.</div>';
+            return;
+        }
+        grid.innerHTML = restaurants.map(r => `
+            <div class="restaurant-card" onclick="location.href='menu.html?restaurantId=${r.id}'">
+                <h3>${escapeHtml(r.name)}</h3>
+                <span class="tag">${escapeHtml(r.cuisineType || 'Various')}</span>
+                <p style="color:var(--muted); font-size:14px; margin:4px 0 0;">${escapeHtml(r.description || '')}</p>
+                <p style="color:var(--muted); font-size:13px; margin:0;">${escapeHtml(r.address || '')}</p>
+            </div>
+        `).join("");
+    } catch (e) {
+        showError(e.message);
+    }
+}
+
+async function refreshCartBadge() {
+    try {
+        const items = await apiCall("/cart");
+        const count = items.reduce((sum, i) => sum + i.quantity, 0);
+        document.getElementById("cart-badge").textContent = count;
+    } catch (e) { /* ignore on this page */ }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+loadRestaurants();
+refreshCartBadge();
+</script>
+</body>
+</html>
